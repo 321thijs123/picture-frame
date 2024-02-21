@@ -7,6 +7,7 @@ from threading import Timer, Thread
 import shutil
 from datetime import datetime
 import exifread
+from geopy.geocoders import Nominatim
 import json
 
 app = Flask(__name__)
@@ -59,6 +60,43 @@ def get_date(file_path):
 
     return "Unknown"
 
+def get_coordinates(file_path):
+    def _to_degrees(value):
+        d, m, s = value.values
+        return d.num / d.den + (m.num / m.den / 60.0) + (s.num / s.den / 3600.0)
+
+    with open(os.path.join(cache_path, file_path), 'rb') as fh:
+        exif_tags = exifread.process_file(fh)
+
+        if 'GPS GPSLatitude' in exif_tags and 'GPS GPSLongitude' in exif_tags:
+            latitude = exif_tags['GPS GPSLatitude']
+            latitude_ref = exif_tags['GPS GPSLatitudeRef'].values
+            longitude = exif_tags['GPS GPSLongitude']
+            longitude_ref = exif_tags['GPS GPSLongitudeRef'].values
+
+            lat = _to_degrees(latitude)
+            if latitude_ref != 'N':
+                lat = -lat
+
+            lon = _to_degrees(longitude)
+            if longitude_ref != 'E':
+                lon = -lon
+
+            return lat, lon
+        else:
+            return None, None
+
+def get_location_name(lat, lon):
+    if lat and lon:
+        try:
+            geo_loc = Nominatim(user_agent="GetLoc")
+            locname = geo_loc.reverse((lat, lon))
+            return locname.address
+        except:
+            return str(lat) + ", " + str(lon)
+
+    return None
+
 def new_cache():
     global cached_files
 
@@ -88,12 +126,15 @@ def index():
     if (cached_files):
         cached_file = cached_files[0]
 
+        [lat, lon] = get_coordinates(cached_file)
+        location_name = get_location_name(lat, lon)
+
         if (is_video(cached_file)):
             video_url=url_for('media', filename=cached_file)
-            return render_template('index.html', video_url=video_url, filename=cached_file, timestamp=datetime.now().timestamp(), datetaken=get_date(cached_file))
+            return render_template('index.html', video_url=video_url, filename=cached_file, timestamp=datetime.now().timestamp(), datetaken=get_date(cached_file), location=location_name)
         else:
             image_url=url_for('media', filename=cached_file)
-            return render_template('index.html', image_url=image_url, filename=cached_file, timestamp=datetime.now().timestamp(), datetaken=get_date(cached_file))
+            return render_template('index.html', image_url=image_url, filename=cached_file, timestamp=datetime.now().timestamp(), datetaken=get_date(cached_file), location=location_name)
         
     else:
         return render_template('index.html')
