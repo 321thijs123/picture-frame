@@ -37,12 +37,16 @@
             z-index: 2;
             display: none;
         }
+        
+        #controls {
+            height: fit-content;
+            width: 100%;
+            bottom: 20px;
+            position: fixed;
+            text-align: center;
+        }
 
         #controls button {
-            position: fixed;
-            left: 50%;
-            bottom: 20px;
-            transform: translateX(-50%);
             padding: 10px 20px;
             font-size: 16px;
             color: white;
@@ -50,7 +54,7 @@
             border: none;
             border-radius: 5px;
             z-index: 2;
-            display: block;
+            display: inline-block;
         }
 
         #banner {
@@ -110,6 +114,7 @@
 
         <div id="controls">
             <button onclick="location.href='/'">Update Image</button>
+            <button onclick="location.href='/exclude/{{ filename }}'">Exclude Media</button>
         </div>
     </div>
     <script>

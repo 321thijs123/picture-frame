@@ -8,6 +8,7 @@ import shutil
 from datetime import datetime
 import exifread
 from geopy.geocoders import Nominatim
+import json
 
 app = Flask(__name__)
 allFiles = []
@@ -16,6 +17,7 @@ cache_depth = 10
 active_file = None
 media_path = "/mnt/diskstation/Photos/"
 cache_path = "cache/"
+metadata_path = "metadata.json"
 browser_process = None
 
 def is_media(file_path):
@@ -27,13 +29,27 @@ def is_video(file_path):
     return file_extension.lower() in (".mp4")
 
 def index_files():
+    num_excluded = 0
     for path, subdirs, files in os.walk(media_path):
         for name in files:
             if is_media(name):
                 folder = path.replace(media_path,"")
-                allFiles.append(os.path.join(folder, name))
-    
+                file_path = os.path.join(folder, name)
+
+                exclude = False
+                if os.path.exists(metadata_path):
+                    with open(metadata_path, 'r') as file:
+                        metadata = json.load(file)
+
+                    exclude = metadata.get(file_path, {}).get("exclude")
+
+                if not exclude:
+                    allFiles.append(file_path)
+                else:
+                    num_excluded += 1
+
     print("Indexed " + str(len(allFiles)) + " files")
+    print("Excluded " + str(num_excluded) + " file(s) from indexing")
 
 def get_date(file_path):
     with open(os.path.join(cache_path, file_path), 'rb') as fh:
@@ -141,6 +157,33 @@ def media(filename):
         caching_thread.start()
 
     return response
+
+@app.route('/exclude/<path:filename>')
+def exclude(filename):
+    new_entry = {"exclude": True}
+
+    if os.path.exists(metadata_path):
+        with open(metadata_path, 'r') as file:
+            metadata = json.load(file)
+
+    else:
+        metadata = {}
+
+    if filename in metadata:
+        metadata[filename].update(new_entry)
+    else:
+        metadata[filename] = new_entry
+
+    with open(metadata_path, 'w') as file:
+        json.dump(metadata, file, indent=4)
+
+    try:
+        allFiles.remove(filename)
+        print("Removing from index: " + filename)
+    except ValueError:
+        print("Removal from index failed: " + filename + " not found in index")
+
+    return index()
 
 @app.route('/stop/')
 def stop():
