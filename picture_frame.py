@@ -6,6 +6,7 @@ import subprocess
 from threading import Timer, Thread
 import shutil
 from datetime import datetime
+import exifread
 
 app = Flask(__name__)
 allFiles = []
@@ -31,7 +32,16 @@ def index_files():
                 folder = path.replace(media_path,"")
                 allFiles.append(os.path.join(folder, name))
     
-    print("Indexed " + str(len(allFiles)) + " files")    
+    print("Indexed " + str(len(allFiles)) + " files")
+
+def get_date(file_path):
+    with open(os.path.join(cache_path, file_path), 'rb') as fh:
+        exif_tags = exifread.process_file(fh, stop_tag="EXIF DateTimeOriginal")
+
+        if "EXIF DateTimeOriginal" in exif_tags:
+            return exif_tags["EXIF DateTimeOriginal"]
+
+    return "Unknown"
 
 def new_cache():
     global cached_files
@@ -64,10 +74,10 @@ def index():
 
         if (is_video(cached_file)):
             video_url=url_for('media', filename=cached_file)
-            return render_template('index.html', video_url=video_url, filename=cached_file, timestamp=datetime.now().timestamp())
+            return render_template('index.html', video_url=video_url, filename=cached_file, timestamp=datetime.now().timestamp(), datetaken=get_date(cached_file))
         else:
             image_url=url_for('media', filename=cached_file)
-            return render_template('index.html', image_url=image_url, filename=cached_file, timestamp=datetime.now().timestamp())
+            return render_template('index.html', image_url=image_url, filename=cached_file, timestamp=datetime.now().timestamp(), datetaken=get_date(cached_file))
         
     else:
         return render_template('index.html')

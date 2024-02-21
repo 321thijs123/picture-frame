@@ -71,6 +71,14 @@
             z-index: 3;
             display: block;
         }
+
+        #infobox {
+            background-color: rgba(0,0,0,0.5);
+            border-radius: 5px;
+            padding: 5px;
+            margin: 5px;
+            width: fit-content;
+        }
     </style>
 </head>
 <body>
@@ -91,6 +99,10 @@
         <div id="banner">
             {{ filename }}
             <button onclick="location.href='/stop/'">quit</button>
+        </div>
+
+        <div id="infobox">
+            Date: {{ datetaken }}
         </div>
 
         <div id="controls">
