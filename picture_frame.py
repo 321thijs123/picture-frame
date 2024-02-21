@@ -11,6 +11,7 @@ app = Flask(__name__)
 allFiles = []
 cached_files = []
 cache_depth = 10
+active_file = None
 media_path = "/mnt/diskstation/Photos/"
 cache_path = "cache/"
 browser_process = None
@@ -73,6 +74,14 @@ def index():
 
 @app.route('/media/<path:filename>')
 def media(filename):
+    global active_file
+
+    if filename != active_file and active_file:
+        print("Removing from cache: " + active_file)
+        os.remove(os.path.join(cache_path, active_file))
+
+    active_file = filename
+
     response = send_from_directory(cache_path, filename)
 
     if filename in cached_files:
@@ -84,13 +93,24 @@ def media(filename):
 
 @app.route('/stop/')
 def stop():
+    global active_file
+
     print("Stopping Chromium and Flask server")
 
+    print("Removing from cache: " + active_file)
+    os.remove(os.path.join(cache_path, active_file))
+
+    for filename in cached_files:
+        print("Removing from cache: " + filename)
+        os.remove(os.path.join(cache_path, filename))
+
+    print("Closing browser")
     global browser_process
     if browser_process:
         browser_process.terminate()
         browser_process = None
     
+    print("Stopping server")
     func = request.environ.get('werkzeug.server.shutdown')
     if func is None:
         raise RuntimeError('Not running with the Werkzeug Server')
