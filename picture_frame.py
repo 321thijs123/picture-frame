@@ -143,10 +143,6 @@ def index():
 def media(filename):
     global active_file
 
-    if filename != active_file and active_file:
-        print("Removing from cache: " + active_file)
-        os.remove(os.path.join(cache_path, active_file))
-
     active_file = filename
 
     response = send_from_directory(cache_path, filename)
@@ -155,6 +151,13 @@ def media(filename):
         cached_files.remove(filename)
         caching_thread = Thread(target=new_cache)
         caching_thread.start()
+
+        if not (filename in cached_files):
+            print("Removing from cache: " + filename)
+            os.remove(os.path.join(cache_path, filename))
+
+    else:
+        print("Unable to remove from cache: " + filename + " not found in cache")
 
     return response
 
