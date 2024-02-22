@@ -114,7 +114,7 @@
 
         <div id="controls">
             <button onclick="location.href='/'">Update Image</button>
-            <button onclick="location.href='/exclude/{{ filename }}'">Exclude Media</button>
+            <button onclick="location.href='/exclude/{{ filename|urlencode }}'">Exclude Media</button>
         </div>
     </div>
     <script>
