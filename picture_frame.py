@@ -143,7 +143,7 @@ def index():
 def media(filename):
     global active_file
 
-    if filename != active_file and active_file:
+    if filename != active_file and active_file and not (active_file in cached_files):
         print("Removing from cache: " + active_file)
         os.remove(os.path.join(cache_path, active_file))
 
