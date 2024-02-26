@@ -9,6 +9,7 @@ from datetime import datetime
 import exifread
 from geopy.geocoders import Nominatim
 import json
+from datetime import datetime
 
 app = Flask(__name__)
 allFiles = []
@@ -52,11 +53,23 @@ def index_files():
     print("Excluded " + str(num_excluded) + " file(s) from indexing")
 
 def get_date(file_path):
-    with open(os.path.join(cache_path, file_path), 'rb') as fh:
-        exif_tags = exifread.process_file(fh, stop_tag="EXIF DateTimeOriginal")
+    full_path = os.path.join(cache_path, file_path)
 
-        if "EXIF DateTimeOriginal" in exif_tags:
-            return exif_tags["EXIF DateTimeOriginal"]
+    if is_video(file_path):
+        try:
+            cmd = ['ffprobe', '-v', 'error', '-select_streams', 'v:0', '-show_entries', 
+                   'format_tags=creation_time', '-of', 'default=noprint_wrappers=1:nokey=1', full_path]
+            creation_time = subprocess.check_output(cmd).strip().decode('utf-8')
+            dt = datetime.fromisoformat(creation_time.rstrip("Z"))
+            return dt.strftime("%d-%m-%Y %H:%M:%S")
+        except Exception as e:
+            print(f"Error reading video metadata: {e}")
+    else:
+        with open(full_path, 'rb') as fh:
+            exif_tags = exifread.process_file(fh, stop_tag="EXIF DateTimeOriginal")
+
+            if "EXIF DateTimeOriginal" in exif_tags:
+                return exif_tags["EXIF DateTimeOriginal"]
 
     return "Unknown"
 
