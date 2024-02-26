@@ -69,6 +69,8 @@ def get_date(file_path):
             exif_tags = exifread.process_file(fh, stop_tag="EXIF DateTimeOriginal")
 
             if "EXIF DateTimeOriginal" in exif_tags:
+                date_str = str(exif_tags["EXIF DateTimeOriginal"])
+                formatted_date = date_str[8:10] + "/" + date_str[5:7] + "/" + date_str[0:4] + date_str[10:]
                 return exif_tags["EXIF DateTimeOriginal"]
 
     return "Unknown"
