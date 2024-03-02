@@ -14,12 +14,16 @@ from datetime import datetime
 app = Flask(__name__)
 allFiles = []
 cached_files = []
-cache_depth = 10
 active_file = None
-media_path = "/mnt/diskstation/Photos/"
-cache_path = "cache/"
-metadata_path = "metadata.json"
 browser_process = None
+
+with open("config.json") as file:
+    config = json.load(file)
+
+    media_path = config["media"]["path"]
+    cache_path = config["cache"]["path"]
+    cache_depth = config["cache"]["depth"]
+    metadata_path = config["metadata"]["path"]
 
 def is_media(file_path):
     _, file_extension = os.path.splitext(file_path)

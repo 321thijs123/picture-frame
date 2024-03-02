@@ -1,0 +1,12 @@
+{
+    "media" : {
+        "path": "media/"
+    },
+    "cache": {
+        "path": "cache/",
+        "depth": 10
+    },
+    "metadata": {
+        "path": "metadata.json"
+    }
+}
