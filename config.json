@@ -2,11 +2,19 @@
     "media" : {
         "path": "media/"
     },
+    "position": {
+        "x": 0,
+        "y": 0
+    },
     "cache": {
         "path": "cache/",
         "depth": 10
     },
+    "browserdata": {
+        "path": "browserdata/"
+    },
     "metadata": {
         "path": "metadata.json"
-    }
+    },
+    "port": 5000
 }

@@ -24,6 +24,10 @@ with open("config.json") as file:
     cache_path = config["cache"]["path"]
     cache_depth = config["cache"]["depth"]
     metadata_path = config["metadata"]["path"]
+    browserdata_path = config["browserdata"]["path"]
+    pos_x = config["position"]["x"]
+    pos_y = config["position"]["y"]
+    port = config["port"]
 
 def is_media(file_path):
     _, file_extension = os.path.splitext(file_path)
@@ -233,8 +237,8 @@ def stop():
 
 def open_browser():
     global browser_process
-    url = 'http://localhost:5000'
-    browser_process = subprocess.Popen(['chromium-browser', '--kiosk', '--incognito', url])
+    url = 'http://localhost:' + str(port)
+    browser_process = subprocess.Popen(['chromium-browser', '--kiosk', '--incognito','--user-data-dir=' + browserdata_path, "--window-position=" + str(pos_x) + "," + str(pos_y), url])
 
 if __name__ == '__main__':
     index_files()
@@ -247,4 +251,4 @@ if __name__ == '__main__':
 
     Timer(1, open_browser).start()
 
-    app.run(host='0.0.0.0', port=5000)
+    app.run(host='0.0.0.0', port=port)
