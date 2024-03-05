@@ -1,6 +1,8 @@
 {
     "media" : {
-        "path": "media/"
+        "path": "media/",
+        "landscape": true,
+        "portrait": true
     },
     "position": {
         "x": 0,
