@@ -107,19 +107,23 @@ def index_files():
                 file_path = os.path.join(folder, name)
 
                 exclude = False
+
                 if os.path.exists(metadata_path):
                     with open(metadata_path, 'r') as file:
                         metadata = json.load(file)
 
                     exclude = metadata.get(file_path, {}).get("exclude")
 
-                if not exclude:
+                landscape = metadata.get(file_path, {}).get("landscape")
+                orientation_ok = (show_landscape and landscape) or (show_portrait and not landscape) or landscape == None
+
+                if not exclude and orientation_ok:
                     allFiles.append(file_path)
                 else:
                     num_excluded += 1
 
     print("Indexed " + str(len(allFiles)) + " files")
-    print("Excluded " + str(num_excluded) + " file(s) from indexing")
+    print("Excluded: " + str(num_excluded) + " file(s) from indexing")
 
 def get_date(file_path):
     full_path = os.path.join(cache_path, file_path)
@@ -199,6 +203,9 @@ def new_cache():
     try:
         shutil.copy2(source, destination)
         landscape = is_landscape(os.path.join(cache_path, picked))
+
+        write_metadata(picked, "landscape", landscape)
+
         if (show_landscape and landscape) or (show_portrait and not landscape):
             cached_files.append(picked)
             print("Cached: " + picked + " - Cache size: " + str(len(cached_files)))
@@ -211,6 +218,23 @@ def new_cache():
         print("Caching failed: " + picked)
         new_cache()
         return
+
+def write_metadata(filename, key, value):
+    new_entry = {key: value}
+
+    if os.path.exists(metadata_path):
+        with open(metadata_path, 'r') as file:
+            metadata = json.load(file)
+    else:
+        metadata = {}
+
+    if filename in metadata:
+        metadata[filename].update(new_entry)
+    else:
+        metadata[filename] = new_entry
+
+    with open(metadata_path, 'w') as file:
+        json.dump(metadata, file, indent=4)
 
 @app.route('/')
 def index():
@@ -251,22 +275,7 @@ def media(filename):
 
 @app.route('/exclude/<path:filename>')
 def exclude(filename):
-    new_entry = {"exclude": True}
-
-    if os.path.exists(metadata_path):
-        with open(metadata_path, 'r') as file:
-            metadata = json.load(file)
-
-    else:
-        metadata = {}
-
-    if filename in metadata:
-        metadata[filename].update(new_entry)
-    else:
-        metadata[filename] = new_entry
-
-    with open(metadata_path, 'w') as file:
-        json.dump(metadata, file, indent=4)
+    write_metadata(filename, "exclude", True)
 
     try:
         allFiles.remove(filename)
