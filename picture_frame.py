@@ -12,12 +12,15 @@ import json
 from datetime import datetime
 from PIL import Image
 from moviepy.editor import VideoFileClip
+from time import sleep
 
 app = Flask(__name__)
 allFiles = []
 cached_files = []
 active_file = None
 browser_process = None
+metadata_changed = False
+metadata = {}
 
 with open("config.json") as file:
     config = json.load(file)
@@ -71,9 +74,9 @@ def get_video_rotation(file_path):
             stdout=subprocess.PIPE, 
             stderr=subprocess.STDOUT
         )
-        metadata = json.loads(result.stdout)
+        video_metadata = json.loads(result.stdout)
         
-        for stream in metadata.get('streams', []):
+        for stream in video_metadata.get('streams', []):
             if stream.get('codec_type') == 'video':
                 for side_data in stream.get('side_data_list', []):
                     if side_data.get('side_data_type') == 'Display Matrix':
@@ -99,6 +102,8 @@ def is_landscape(file_path):
         return is_photo_landscape(file_path)
 
 def index_files():
+    global metadata
+
     num_excluded = 0
     for path, subdirs, files in os.walk(media_path):
         for name in files:
@@ -106,16 +111,10 @@ def index_files():
                 folder = path.replace(media_path,"")
                 file_path = os.path.join(folder, name)
 
-                exclude = False
-
-                if os.path.exists(metadata_path):
-                    with open(metadata_path, 'r') as file:
-                        metadata = json.load(file)
-
-                    exclude = metadata.get(file_path, {}).get("exclude")
-
+                exclude = metadata.get(file_path, {}).get("exclude")
                 landscape = metadata.get(file_path, {}).get("landscape")
-                orientation_ok = (show_landscape and landscape) or (show_portrait and not landscape) or landscape == None
+
+                orientation_ok = (show_landscape and landscape) or (show_portrait and not landscape) or not landscape
 
                 if not exclude and orientation_ok:
                     allFiles.append(file_path)
@@ -204,7 +203,7 @@ def new_cache():
         shutil.copy2(source, destination)
         landscape = is_landscape(os.path.join(cache_path, picked))
 
-        write_metadata(picked, "landscape", landscape)
+        add_metadata(picked, "landscape", landscape)
 
         if (show_landscape and landscape) or (show_portrait and not landscape):
             cached_files.append(picked)
@@ -219,22 +218,30 @@ def new_cache():
         new_cache()
         return
 
-def write_metadata(filename, key, value):
-    new_entry = {key: value}
+def add_metadata(filename, key, value):
+    global metadata_changed, metadata
 
-    if os.path.exists(metadata_path):
-        with open(metadata_path, 'r') as file:
-            metadata = json.load(file)
-    else:
-        metadata = {}
+    new_entry = {key: value}
 
     if filename in metadata:
         metadata[filename].update(new_entry)
     else:
         metadata[filename] = new_entry
 
-    with open(metadata_path, 'w') as file:
-        json.dump(metadata, file, indent=4)
+    metadata_changed = True
+
+def write_metadata():
+    global metadata_changed, metadata
+
+    while True:
+        if metadata_changed:
+            print("Updating metadata file")
+            metadata_changed = False
+
+            with open(metadata_path, 'w') as file:
+                json.dump(metadata, file, indent=4)
+
+        sleep(1)
 
 @app.route('/')
 def index():
@@ -275,7 +282,7 @@ def media(filename):
 
 @app.route('/exclude/<path:filename>')
 def exclude(filename):
-    write_metadata(filename, "exclude", True)
+    add_metadata(filename, "exclude", True)
 
     try:
         allFiles.remove(filename)
@@ -318,9 +325,16 @@ def open_browser():
     browser_process = subprocess.Popen(['chromium-browser', '--kiosk', '--incognito','--user-data-dir=' + browserdata_path, "--window-position=" + str(pos_x) + "," + str(pos_y), url])
 
 if __name__ == '__main__':
+    metadata_thread = Thread(target=write_metadata)
+    metadata_thread.start()
+
     index_files()
     
     new_cache()
+
+    if os.path.exists(metadata_path):
+        with open(metadata_path, 'r') as file:
+            metadata = json.load(file)
 
     for i in range(cache_depth - 1):
         caching_thread = Thread(target=new_cache)
