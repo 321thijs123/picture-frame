@@ -2,7 +2,11 @@
     "media" : {
         "path": "media/",
         "landscape": true,
-        "portrait": true
+        "portrait": false
+    },
+    "autorefresh": {
+        "enable": true,
+        "time": "1:00:00"
     },
     "position": {
         "x": 0,

@@ -9,10 +9,10 @@ from datetime import datetime
 import exifread
 from geopy.geocoders import Nominatim
 import json
-from datetime import datetime
 from PIL import Image
 from moviepy.editor import VideoFileClip
 from time import sleep
+from datetime import datetime, timedelta
 
 app = Flask(__name__)
 allFiles = []
@@ -35,6 +35,8 @@ with open("config.json") as file:
     pos_x = config["position"]["x"]
     pos_y = config["position"]["y"]
     port = config["port"]
+    autorefresh = config["autorefresh"]["enable"]
+    refreshtime = datetime.strptime(config["autorefresh"]["time"], "%H:%M:%S").time()
 
 def is_media(file_path):
     _, file_extension = os.path.splitext(file_path)
@@ -323,6 +325,22 @@ def open_browser():
     global browser_process
     url = 'http://localhost:' + str(port)
     browser_process = subprocess.Popen(['chromium-browser', '--kiosk', '--incognito','--user-data-dir=' + browserdata_path, "--window-position=" + str(pos_x) + "," + str(pos_y), url])
+
+    if (autorefresh):
+        setNextRefresh()
+
+def setNextRefresh():
+    now=datetime.today()
+    
+    target=now.replace(hour=refreshtime.hour, minute=refreshtime.minute, second=refreshtime.second, microsecond=0)
+
+    if target < now:
+        target = target + timedelta(days=1)
+
+    delta_t=target-now
+
+    secs=delta_t.total_seconds()
+    Timer(secs, open_browser).start()
 
 if __name__ == '__main__':
     metadata_thread = Thread(target=write_metadata)
