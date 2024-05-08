@@ -13,6 +13,19 @@ from PIL import Image
 from moviepy.editor import VideoFileClip
 from time import sleep
 from datetime import datetime, timedelta
+from multiprocessing import Process
+
+def log(message, logtype="INFO"):
+    now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+    formatted = "[{}] [{}] {}".format(logtype, now, message)
+    
+    print(formatted)
+
+    with open("log.txt", "a") as myfile:
+        myfile.write(formatted + "\n")
+
+log("--- Starting ---")
 
 app = Flask(__name__)
 allFiles = []
@@ -38,14 +51,25 @@ with open("config.json") as file:
     autorefresh = config["autorefresh"]["enable"]
     refreshtime = datetime.strptime(config["autorefresh"]["time"], "%H:%M:%S").time()
 
+log("Config loaded")
+
+def runServer():
+    try:
+        app.run(host='0.0.0.0', port=port)
+    except Exception as e:
+        log(f"Server terminated due to an exception: {e}", "ERROR")
+    finally:
+        log("Server process is exiting", "INFO")
+
+server = Process(target=runServer)
+
 def is_media(file_path):
     _, file_extension = os.path.splitext(file_path)
-    return file_extension.lower() in (".jpeg", ".jpg", ".png", ".mp4")
+    return file_extension.lower() in (".jpeg", ".jpg", ".png")
 
 def is_video(file_path):
     _, file_extension = os.path.splitext(file_path)
     return file_extension.lower() in (".mp4")
-
 
 def get_photo_rotation(file_path):
     with open(file_path, 'rb') as img_file:
@@ -85,7 +109,7 @@ def get_video_rotation(file_path):
                         return side_data.get('rotation', 0)
         return 0
     except Exception as e:
-        print(f"Error extracting metadata for {file_path}: {e}")
+        log(f"Error extracting metadata for {file_path}: {e}", "ERROR")
         return 0
 
 def is_video_landscape(file_path):
@@ -123,8 +147,8 @@ def index_files():
                 else:
                     num_excluded += 1
 
-    print("Indexed " + str(len(allFiles)) + " files")
-    print("Excluded: " + str(num_excluded) + " file(s) from indexing")
+    log("Indexed " + str(len(allFiles)) + " files")
+    log("Excluded: " + str(num_excluded) + " file(s) from indexing")
 
 def get_date(file_path):
     full_path = os.path.join(cache_path, file_path)
@@ -137,7 +161,7 @@ def get_date(file_path):
             dt = datetime.fromisoformat(creation_time.rstrip("Z"))
             return dt.strftime("%d-%m-%Y %H:%M:%S")
         except Exception as e:
-            print(f"Error reading video metadata: {e}")
+            log(f"Error reading video metadata: {e}", "ERROR")
     else:
         with open(full_path, 'rb') as fh:
             exif_tags = exifread.process_file(fh, stop_tag="EXIF DateTimeOriginal")
@@ -191,7 +215,7 @@ def new_cache():
 
     picked = random.choice(allFiles)
     
-    print ("Caching: " + picked)
+    log("Caching: " + picked)
 
     source = os.path.join(media_path, picked)
     destination = os.path.join(cache_path, picked)
@@ -209,14 +233,14 @@ def new_cache():
 
         if (show_landscape and landscape) or (show_portrait and not landscape):
             cached_files.append(picked)
-            print("Cached: " + picked + " - Cache size: " + str(len(cached_files)))
+            log("Cached: " + picked + " - Cache size: " + str(len(cached_files)))
         else:
-            print("Undesired orientation: " + picked)
+            log("Undesired orientation: " + picked)
             os.remove(os.path.join(cache_path, picked))
             allFiles.remove(picked)
             new_cache()
     except:
-        print("Caching failed: " + picked)
+        log("Caching failed: " + picked, "ERROR")
         new_cache()
         return
 
@@ -237,7 +261,7 @@ def write_metadata():
 
     while True:
         if metadata_changed:
-            print("Updating metadata file")
+            log("Updating metadata file")
             metadata_changed = False
 
             with open(metadata_path, 'w') as file:
@@ -268,7 +292,7 @@ def media(filename):
     global active_file
 
     if filename != active_file and active_file and not (active_file in cached_files):
-        print("Removing from cache: " + active_file)
+        log("Removing from cache: " + active_file)
         os.remove(os.path.join(cache_path, active_file))
 
     active_file = filename
@@ -288,9 +312,9 @@ def exclude(filename):
 
     try:
         allFiles.remove(filename)
-        print("Removing from index: " + filename)
+        log("Removing from index: " + filename)
     except ValueError:
-        print("Removal from index failed: " + filename + " not found in index")
+        log("Removal from index failed: " + filename + " not found in index")
 
     return index()
 
@@ -298,26 +322,28 @@ def exclude(filename):
 def stop():
     global active_file
 
-    print("Stopping Chromium and Flask server")
+    log("Stopping Chromium and Flask server")
 
-    print("Removing from cache: " + active_file)
+    log("Removing from cache: " + active_file)
     os.remove(os.path.join(cache_path, active_file))
 
     for filename in cached_files:
-        print("Removing from cache: " + filename)
+        log("Removing from cache: " + filename)
         os.remove(os.path.join(cache_path, filename))
 
-    print("Closing browser")
     global browser_process
-    if browser_process:
+    log("Closing browser")
+    try:
         browser_process.terminate()
-        browser_process = None
-    
-    print("Stopping server")
-    func = request.environ.get('werkzeug.server.shutdown')
-    if func is None:
-        raise RuntimeError('Not running with the Werkzeug Server')
-    func()
+    except Exception as error:
+        log(error, "WARN")
+
+    global server
+    try:
+        log("Stopping server")
+        server.terminate()
+    except Exception as error:
+        log(error, "WARN")
 
     return "Stopping..."
 
@@ -360,4 +386,5 @@ if __name__ == '__main__':
 
     Timer(1, open_browser).start()
 
-    app.run(host='0.0.0.0', port=port)
+    server.start()
+    server.join()
