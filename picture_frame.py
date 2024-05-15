@@ -15,6 +15,9 @@ from time import sleep
 from datetime import datetime, timedelta
 from multiprocessing import Process
 
+from cache_manager import cache_manager
+from media_tools import is_video, is_media
+
 def log(message, logtype="INFO"):
     now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
@@ -28,8 +31,6 @@ def log(message, logtype="INFO"):
 log("--- Starting ---")
 
 app = Flask(__name__)
-allFiles = []
-cached_files = []
 active_file = None
 browser_process = None
 metadata_changed = False
@@ -63,72 +64,10 @@ def runServer():
 
 server = Process(target=runServer)
 
-def is_media(file_path):
-    _, file_extension = os.path.splitext(file_path)
-    return file_extension.lower() in (".jpeg", ".jpg", ".png")
-
-def is_video(file_path):
-    _, file_extension = os.path.splitext(file_path)
-    return file_extension.lower() in (".mp4")
-
-def get_photo_rotation(file_path):
-    with open(file_path, 'rb') as img_file:
-        exif_tags = exifread.process_file(img_file)
-        orientation_key = 'Image Orientation'
-
-        if orientation_key in exif_tags:
-            orientation = exif_tags[orientation_key].values[0]
-            return orientation
-
-    return False
-
-def is_photo_landscape(file_path):
-    rotated = get_photo_rotation(file_path) in [5, 6, 7, 8]
-        
-    with Image.open(file_path) as img:
-        width, height = img.size
-        if rotated:
-            return height > width or width == height
-        else:
-            return width > height or width == height
-
-def get_video_rotation(file_path):
-    try:
-        result = subprocess.run(
-            ["ffprobe", "-i", file_path, "-v", "quiet", 
-             "-print_format", "json", "-show_streams"],
-            stdout=subprocess.PIPE, 
-            stderr=subprocess.STDOUT
-        )
-        video_metadata = json.loads(result.stdout)
-        
-        for stream in video_metadata.get('streams', []):
-            if stream.get('codec_type') == 'video':
-                for side_data in stream.get('side_data_list', []):
-                    if side_data.get('side_data_type') == 'Display Matrix':
-                        return side_data.get('rotation', 0)
-        return 0
-    except Exception as e:
-        log(f"Error extracting metadata for {file_path}: {e}", "ERROR")
-        return 0
-
-def is_video_landscape(file_path):
-    rotation = get_video_rotation(file_path)
-    if rotation in [90, 270, -90, -270]:
-        return False
-    else:
-        with VideoFileClip(file_path) as video:
-            width, height = video.size
-            return width > height
-
-def is_landscape(file_path):
-    if (is_video(file_path)):
-        return is_video_landscape(file_path)
-    else:
-        return is_photo_landscape(file_path)
-
 def index_files():
     global metadata
+
+    all_files = []
 
     num_excluded = 0
     for path, subdirs, files in os.walk(media_path):
@@ -143,12 +82,14 @@ def index_files():
                 orientation_ok = (show_landscape and landscape) or (show_portrait and not landscape) or not landscape
 
                 if not exclude and orientation_ok:
-                    allFiles.append(file_path)
+                    all_files.append(file_path)
                 else:
                     num_excluded += 1
 
-    log("Indexed " + str(len(allFiles)) + " files")
+    log("Indexed " + str(len(all_files)) + " files")
     log("Excluded: " + str(num_excluded) + " file(s) from indexing")
+
+    return all_files
 
 def get_date(file_path):
     full_path = os.path.join(cache_path, file_path)
@@ -210,40 +151,6 @@ def get_location_name(lat, lon):
 
     return None
 
-def new_cache():
-    global cached_files
-
-    picked = random.choice(allFiles)
-    
-    log("Caching: " + picked)
-
-    source = os.path.join(media_path, picked)
-    destination = os.path.join(cache_path, picked)
-
-    destination_dir = os.path.dirname(destination)
-
-    if not os.path.exists(destination_dir):
-        os.makedirs(destination_dir)
-
-    try:
-        shutil.copy2(source, destination)
-        landscape = is_landscape(os.path.join(cache_path, picked))
-
-        add_metadata(picked, "landscape", landscape)
-
-        if (show_landscape and landscape) or (show_portrait and not landscape):
-            cached_files.append(picked)
-            log("Cached: " + picked + " - Cache size: " + str(len(cached_files)))
-        else:
-            log("Undesired orientation: " + picked)
-            os.remove(os.path.join(cache_path, picked))
-            allFiles.remove(picked)
-            new_cache()
-    except:
-        log("Caching failed: " + picked, "ERROR")
-        new_cache()
-        return
-
 def add_metadata(filename, key, value):
     global metadata_changed, metadata
 
@@ -271,9 +178,9 @@ def write_metadata():
 
 @app.route('/')
 def index():
-    if (cached_files):
-        cached_file = cached_files[0]
+    cached_file = cache.get()
 
+    if (cached_file):
         [lat, lon] = get_coordinates(cached_file)
         location_name = get_location_name(lat, lon)
 
@@ -285,24 +192,20 @@ def index():
             return render_template('index.html', image_url=image_url, filename=cached_file, timestamp=datetime.now().timestamp(), datetaken=get_date(cached_file), location=location_name)
         
     else:
+        cache.fill()
         return render_template('index.html')
 
 @app.route('/media/<path:filename>')
 def media(filename):
     global active_file
 
-    if filename != active_file and active_file and not (active_file in cached_files):
+    if filename != active_file and active_file:
         log("Removing from cache: " + active_file)
         os.remove(os.path.join(cache_path, active_file))
 
     active_file = filename
 
     response = send_from_directory(cache_path, filename)
-
-    if filename in cached_files:
-        cached_files.remove(filename)
-        caching_thread = Thread(target=new_cache)
-        caching_thread.start()
 
     return response
 
@@ -311,7 +214,7 @@ def exclude(filename):
     add_metadata(filename, "exclude", True)
 
     try:
-        allFiles.remove(filename)
+        cache.all_files.remove(filename)
         log("Removing from index: " + filename)
     except ValueError:
         log("Removal from index failed: " + filename + " not found in index")
@@ -327,9 +230,7 @@ def stop():
     log("Removing from cache: " + active_file)
     os.remove(os.path.join(cache_path, active_file))
 
-    for filename in cached_files:
-        log("Removing from cache: " + filename)
-        os.remove(os.path.join(cache_path, filename))
+    cache.clean()
 
     global browser_process
     log("Closing browser")
@@ -372,17 +273,16 @@ if __name__ == '__main__':
     metadata_thread = Thread(target=write_metadata)
     metadata_thread.start()
 
-    index_files()
-    
-    new_cache()
+    all_files = index_files()
+
+    cache = cache_manager(cache_depth, show_landscape, show_portrait, media_path, cache_path, all_files, log, add_metadata)
+    cache.new_cache()
 
     if os.path.exists(metadata_path):
         with open(metadata_path, 'r') as file:
             metadata = json.load(file)
 
-    for i in range(cache_depth - 1):
-        caching_thread = Thread(target=new_cache)
-        caching_thread.start()
+    # cache.fill()
 
     Timer(1, open_browser).start()
 
