@@ -17,6 +17,7 @@ from multiprocessing import Process
 
 from cache_manager import cache_manager
 from media_tools import is_video, is_media
+from metadata_manager import MetadataManager
 
 def log(message, logtype="INFO"):
     now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -33,8 +34,6 @@ log("--- Starting ---")
 app = Flask(__name__)
 active_file = None
 browser_process = None
-metadata_changed = False
-metadata = {}
 
 with open("config.json") as file:
     config = json.load(file)
@@ -65,8 +64,6 @@ def runServer():
 server = Process(target=runServer)
 
 def index_files():
-    global metadata
-
     all_files = []
 
     num_excluded = 0
@@ -151,31 +148,6 @@ def get_location_name(lat, lon):
 
     return None
 
-def add_metadata(filename, key, value):
-    global metadata_changed, metadata
-
-    new_entry = {key: value}
-
-    if filename in metadata:
-        metadata[filename].update(new_entry)
-    else:
-        metadata[filename] = new_entry
-
-    metadata_changed = True
-
-def write_metadata():
-    global metadata_changed, metadata
-
-    while True:
-        if metadata_changed:
-            log("Updating metadata file")
-            metadata_changed = False
-
-            with open(metadata_path, 'w') as file:
-                json.dump(metadata, file, indent=4)
-
-        sleep(1)
-
 @app.route('/')
 def index():
     cached_file = cache.get()
@@ -211,7 +183,7 @@ def media(filename):
 
 @app.route('/exclude/<path:filename>')
 def exclude(filename):
-    add_metadata(filename, "exclude", True)
+    metadata.add(filename, "exclude", True)
 
     try:
         cache.all_files.remove(filename)
@@ -270,12 +242,11 @@ def setNextRefresh():
     Timer(secs, open_browser).start()
 
 if __name__ == '__main__':
-    metadata_thread = Thread(target=write_metadata)
-    metadata_thread.start()
+    metadata = MetadataManager(metadata_path, log)
 
     all_files = index_files()
 
-    cache = cache_manager(cache_depth, show_landscape, show_portrait, media_path, cache_path, all_files, log, add_metadata)
+    cache = cache_manager(cache_depth, show_landscape, show_portrait, media_path, cache_path, all_files, log, metadata.add)
     cache.new_cache()
 
     if os.path.exists(metadata_path):
